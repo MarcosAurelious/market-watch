@@ -1,0 +1,44 @@
+# Back end: refreshes data/market.json on GitHub's servers and commits it. GitHub Pages then serves it to the app.
+# The Alpha Vantage key lives in an encrypted repository secret (Settings > Secrets and variables > Actions).
+name: Update market data
+
+on:
+  schedule:
+    - cron: "30 21 * * 1-5"   # 2:30 PM PDT / 1:30 PM PST, after the US close, weekdays (GitHub cron is UTC)
+    - cron: "0 */4 * * *"     # crypto-only refresh every 4 hours (uses no Alpha Vantage calls)
+  workflow_dispatch: {}        # "Run workflow" button for a manual refresh
+
+permissions:
+  contents: write              # only what's needed to commit the data file
+
+concurrency:
+  group: market-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2, pinned to a commit
+        with:
+          persist-credentials: true
+
+      - name: Refresh data (standard-library Python, no installs)
+        env:
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+          MW_MAX_CALLS: ${{ github.event.schedule == '0 */4 * * *' && '0' || '24' }}
+        run: python3 scripts/update_data.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data/market.json; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "market-watch-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/market.json
+          git commit -m "Update market data"
+          git push

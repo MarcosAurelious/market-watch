@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.coingecko.com; base-uri 'none'; form-action 'none'; object-src 'none'; manifest-src 'self'; require-trusted-types-for 'script'; upgrade-insecure-requests">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark">
+<title>Market Watch</title>
+<meta name="description" content="Stocks, crypto, commodities, sectors, Congress and political trades in one retro dashboard. Demo — not financial advice.">
+<link rel="stylesheet" href="styles.css">
+<link rel="preload" href="fonts/press-start-2p.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/vt323.woff2" as="font" type="font/woff2" crossorigin>
+</head>
+<body>
+<!--MW-SNAPSHOT-->
+<main class="wrap">
+  <div class="status" role="status" aria-live="polite">
+    <span><span class="dot" id="status-dot"></span><span id="status-text">LOADING...</span></span>
+    <button class="btn" id="reload" type="button">Reload</button>
+  </div>
+
+  <header class="hero px hot" id="top">
+    <div>
+      <div class="kicker">Stocks · Crypto · Commodities · Politics</div>
+      <h1>MARKET<br>WATCH</h1>
+      <p class="take" id="take"></p>
+    </div>
+    <div class="pf px">
+      <span class="kicker">Player 1 · $100 paper portfolio</span>
+      <span class="huge" id="pf-value">$---</span>
+      <span class="sub" id="pf-gain"></span>
+      <span class="note" id="pf-since"></span>
+      <span class="press">Demo money · not financial advice</span>
+    </div>
+  </header>
+
+  <nav class="tabs px" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" data-tab="overview" type="button">Overview</button>
+    <button class="tab" role="tab" data-tab="portfolio" type="button">Portfolio</button>
+    <button class="tab" role="tab" data-tab="stocks" type="button">Stocks</button>
+    <button class="tab" role="tab" data-tab="crypto" type="button">Crypto</button>
+    <button class="tab" role="tab" data-tab="commodities" type="button">Commodities</button>
+    <button class="tab" role="tab" data-tab="sectors" type="button">Sectors</button>
+    <button class="tab" role="tab" data-tab="top10" type="button">Top 10s</button>
+    <button class="tab" role="tab" data-tab="geo" type="button">Geopolitics</button>
+    <button class="tab" role="tab" data-tab="penny" type="button">Penny</button>
+    <button class="tab" role="tab" data-tab="congress" type="button">Congress</button>
+    <button class="tab" role="tab" data-tab="trump" type="button">Trump &amp; co.</button>
+  </nav>
+
+  <section class="page" data-page="overview" role="tabpanel" aria-label="Overview">
+    <div class="kpis" id="ov-kpis"></div>
+    <div class="card px">
+      <div class="card-h"><h2>Sector leaders · year to date</h2><p class="note">Each tile is a stock. Brighter green = bigger gain since Dec 31, 2025; brighter red = bigger loss.</p></div>
+      <div class="heat" id="heatmap"></div>
+    </div>
+    <div class="grid">
+      <div class="card px"><div class="card-h"><h2>Crypto · last 24h</h2><p class="note">Live prices each time you open the page.</p></div><div class="chart" id="crypto-bars" aria-label="Crypto 24 hour change"></div></div>
+      <div class="card px"><div class="card-h"><h2>Top &amp; bottom 5 · YTD</h2><p class="note">Dividend-adjusted, since Dec 31, 2025.</p></div><div class="chart" id="ytd-mini" aria-label="Top and bottom five stocks year to date"></div></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="portfolio" role="tabpanel" aria-label="Paper portfolio" hidden>
+    <div class="kpis" id="pf-kpis"></div>
+    <div class="card px">
+      <div class="card-h"><h2>Holdings</h2><p class="note">$25 each in the model's four picks, bought at the Oct 22, 2026 close. Each square = 1% of the portfolio.</p></div>
+      <div class="donut-wrap">
+        <div class="chart" id="waffle"></div>
+        <div class="scroll"><table id="pf-table"><thead><tr><th>Stock</th><th class="num hide-narrow">Shares</th><th class="num hide-narrow">Bought</th><th class="num">Latest</th><th class="num">Value</th><th class="num">Gain</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="card px">
+      <div class="card-h"><h2>The model · rerun live</h2><p class="note">Score = 0.7 × momentum z-score − 0.3 × last-month z-score. Momentum = 1-year return excluding the last month. ★ = current top pick, one per sector.</p></div>
+      <div class="scroll"><table id="model-table"><thead><tr><th class="num">#</th><th>Stock</th><th class="hide-narrow">Sector</th><th class="num">Momentum</th><th class="num hide-narrow">Last month</th><th class="num">Score</th><th>Pick</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="stocks" role="tabpanel" aria-label="Stocks" hidden>
+    <div class="card px"><div class="card-h"><h2>Year-to-date return</h2><p class="note">Every sector leader, since Dec 31, 2025, dividends included. Updated each weekday after the close.</p></div><div class="chart" id="ytd-chart" aria-label="Year to date return by stock"></div></div>
+    <div class="card px">
+      <div class="card-h"><h2>All 33 leaders</h2><p class="note">Tap a column to sort. 1M = since Sep 30; 1Y = since Oct 31, 2025.</p></div>
+      <div class="controls"><input id="st-search" type="search" placeholder="Search ticker or company" aria-label="Search stocks" maxlength="40"><select id="st-sector" aria-label="Sector"><option value="">All sectors</option></select></div>
+      <div class="scroll"><table id="stock-table"><thead><tr>
+        <th><button data-k="ticker" type="button">Stock</button></th><th class="hide-narrow"><button data-k="sector" type="button">Sector</button></th>
+        <th class="num"><button data-k="close" type="button">Close</button></th><th class="num hide-narrow"><button data-k="day_pct" type="button">Day</button></th>
+        <th class="num hide-narrow"><button data-k="m1_pct" type="button">1M</button></th><th class="num"><button data-k="ytd_pct" type="button">YTD</button></th>
+        <th class="num hide-narrow"><button data-k="y1_pct" type="button">1Y</button></th><th class="hide-narrow"><button data-k="as_of" type="button">As of</button></th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="crypto" role="tabpanel" aria-label="Crypto" hidden>
+    <p class="snapnote" id="crypto-src"></p>
+    <div class="kpis" id="crypto-kpis"></div>
+    <div class="card px"><div class="card-h"><h2>Top 15 coins</h2><p class="note">Stablecoins (USDT, USDC) are built to stay at $1.</p></div>
+      <div class="scroll"><table id="crypto-table"><thead><tr><th class="num">#</th><th>Coin</th><th class="num">Price</th><th class="num">24h</th><th class="num">7d</th><th class="num hide-narrow">Market cap</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="commodities" role="tabpanel" aria-label="Commodities" hidden>
+    <div class="kpis" id="com-tiles"></div>
+    <p class="snapnote">Updated each weekday after the close. Change is from the previous reading. Oil and gas spot prices can lag a few days.</p>
+  </section>
+
+  <section class="page" data-page="sectors" role="tabpanel" aria-label="Sectors" hidden>
+    <p class="snapnote"><span data-asof="sectors"></span>Source: StockAnalysis.com sector pages.</p>
+    <div class="grid">
+      <div class="card px"><div class="card-h"><h2>Sector move · day</h2></div><div class="chart" id="sec-day" aria-label="Sector day change"></div></div>
+      <div class="card px"><div class="card-h"><h2>Sector return · 1 year</h2></div><div class="chart" id="sec-1y" aria-label="Sector one year return"></div></div>
+    </div>
+    <div class="card px"><div class="card-h"><h2>Scoreboard</h2><p class="note">Breadth = how many of each sector's top 10 rose vs. fell.</p></div>
+      <div class="scroll"><table id="sec-table"><thead><tr><th>Sector</th><th class="num hide-narrow"># Stocks</th><th class="num">Value</th><th class="num">Day</th><th class="num">1 year</th><th class="hide-narrow">Breadth</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="top10" role="tabpanel" aria-label="Top 10 per sector" hidden>
+    <p class="snapnote"><span data-asof="top10"></span>Source: StockAnalysis.com. Web prices can lag the exact close.</p>
+    <div class="card px"><div class="card-h"><h2>Top 10 in every sector</h2><p class="note">Ranked by market value. Bar = company size ($B).</p></div>
+      <div class="controls"><input id="t10-search" type="search" placeholder="Search company or industry" aria-label="Search companies" maxlength="40"><select id="t10-sector" aria-label="Sector"><option value="">All sectors</option></select></div>
+      <div class="scroll"><table id="t10-table"><thead><tr><th class="num">#</th><th>Company</th><th class="hide-narrow">Industry</th><th class="hide-narrow">Size</th><th class="num">Price</th><th class="num">Day</th><th class="num">Value $B</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="geo" role="tabpanel" aria-label="Geopolitics" hidden>
+    <p class="snapnote"><span data-asof="geopolitics"></span>"Exposure" shows which way the risk points, not a prediction. Not financial advice.</p>
+    <div class="geo" id="geo-cards"></div>
+  </section>
+
+  <section class="page" data-page="penny" role="tabpanel" aria-label="Penny stocks" hidden>
+    <div class="warn">WARNING! Penny stocks can swing 20–100% in a day and are a favorite target of pump-and-dump schemes. Watch them, don't chase them.</div>
+    <div class="card px"><div class="card-h"><h2>Risk meter</h2><p class="note"><span data-asof="penny"></span>The 25 most-traded stocks under $5, by company size.</p></div><div class="riskbar" id="risk-bar"></div><div class="keys" id="risk-keys"></div></div>
+    <div class="card px"><div class="card-h"><h2>Most traded under $5</h2></div>
+      <div class="scroll"><table id="penny-table"><thead><tr><th class="num">#</th><th>Stock</th><th class="num">Price</th><th class="num">Day</th><th class="num hide-narrow">Shares</th><th>Risk</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="congress" role="tabpanel" aria-label="Congress" hidden>
+    <p class="snapnote"><span data-asof="congress"></span>STOCK Act disclosures. Trading is legal for members; counts show activity, not wrongdoing. Buy/sell counts are estimates (±5%) from each stock's total trades and buy-to-sell ratio (GovGreed, 2012–2026).</p>
+    <div class="grid">
+      <div class="card px"><div class="card-h"><h2>Top 20 bought</h2></div><div class="chart" id="cg-bought" aria-label="Top 20 stocks bought by Congress"></div></div>
+      <div class="card px"><div class="card-h"><h2>Top 10 sold</h2></div><div class="chart" id="cg-sold" aria-label="Top 10 stocks sold by Congress"></div></div>
+    </div>
+    <div class="card px"><div class="card-h"><h2>Bought most recently</h2><p class="note">Trades Jun 27 – Sep 25, 2026, ranked by how many members bought.</p></div>
+      <div class="scroll"><table id="cg-recent"><thead><tr><th>Stock</th><th class="num">Members</th><th class="num">Purchases</th></tr></thead><tbody></tbody></table></div></div>
+    <div class="card px"><div class="card-h"><h2>Most active traders</h2><p class="note">Disclosed trades since 2012 (Kapitol.ai).</p></div><div class="chart" id="cg-members" aria-label="Most active congressional traders"></div></div>
+    <div class="card px"><div class="scroll"><table id="cg-table"><thead><tr><th class="num">#</th><th>Member</th><th class="hide-narrow">Chamber</th><th class="num">Trades</th><th class="num">Est. $M</th><th class="hide-narrow">Last active</th></tr></thead><tbody></tbody></table></div></div>
+  </section>
+
+  <section class="page" data-page="trump" role="tabpanel" aria-label="Trump and associates" hidden>
+    <p class="snapnote"><span data-asof="trump"></span>From official disclosures (OGE Form 278-T, Senate reports, SEC filings) and news reports. Amounts are the ranges the forms require. No regulator has found wrongdoing in anyone's stock trades; the one established violation (Perez) was on Kalshi.</p>
+    <div class="people" id="people"></div>
+    <div class="card px"><div class="card-h"><h2>What they traded</h2><p class="note"><span id="tt-count">0</span> disclosed trades and holdings. Each links to its source.</p></div>
+      <div class="controls"><select id="tt-person" aria-label="Person"><option value="">Everyone</option></select><select id="tt-action" aria-label="Action"><option value="">Buys + sells</option><option value="Buy">Buys</option><option value="Sell">Sells</option></select><input id="tt-search" type="search" placeholder="Search company or ticker" aria-label="Search trades" maxlength="40"></div>
+      <div class="scroll"><table id="tt-table" class="wraptable"><thead><tr><th>Date</th><th class="hide-narrow">Who</th><th>Asset</th><th>Action</th><th class="num">Amount $</th><th class="hide-narrow">Source</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <footer>
+    <b>MARKET WATCH</b> · Demo for discussion only. Not financial advice; past performance does not predict future results.
+    Data: Alpha Vantage (stocks, commodities), CoinGecko (live crypto), StockAnalysis.com, GovGreed, Kapitol.ai, OGE and news reports as cited.
+    Pixel fonts: Press Start 2P and VT323 (SIL Open Font License).
+  </footer>
+</main>
+<!--MW-CONFIG-->
+<script src="app.js"></script>
+</body>
+</html>

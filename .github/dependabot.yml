@@ -1,0 +1,8 @@
+# Dependency scanning: GitHub checks the pinned workflow actions weekly
+# and opens a pull request when a security fix or update is available.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

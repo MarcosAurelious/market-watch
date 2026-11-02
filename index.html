@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.coingecko.com; base-uri 'none'; form-action 'none'; object-src 'none'; manifest-src 'self'; require-trusted-types-for 'script'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.coingecko.com https://api.elections.kalshi.com https://site.api.espn.com; base-uri 'none'; form-action 'none'; object-src 'none'; manifest-src 'self'; require-trusted-types-for 'script'; upgrade-insecure-requests">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="dark">
 <title>Market Watch</title>
-<meta name="description" content="Stocks, crypto, commodities, sectors, Congress and political trades in one retro dashboard. Demo — not financial advice.">
+<meta name="description" content="Stocks, crypto, commodities, Kalshi prediction markets, sportsbook odds, Congress and political trades in one retro dashboard. Not financial advice.">
 <link rel="stylesheet" href="styles.css">
 <link rel="preload" href="fonts/press-start-2p.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/vt323.woff2" as="font" type="font/woff2" crossorigin>
@@ -23,7 +23,7 @@
 
   <header class="hero px hot" id="top">
     <div>
-      <div class="kicker">Stocks · Crypto · Commodities · Politics</div>
+      <div class="kicker">Stocks · Crypto · Commodities · Odds · Politics</div>
       <h1>MARKET<br>WATCH</h1>
       <p class="take" id="take"></p>
     </div>
@@ -32,7 +32,7 @@
       <span class="huge" id="pf-value">$---</span>
       <span class="sub" id="pf-gain"></span>
       <span class="note" id="pf-since"></span>
-      <span class="press">Demo money · not financial advice</span>
+      <span class="press">Paper portfolio · not financial advice</span>
     </div>
   </header>
 
@@ -42,6 +42,8 @@
     <button class="tab" role="tab" data-tab="stocks" type="button">Stocks</button>
     <button class="tab" role="tab" data-tab="crypto" type="button">Crypto</button>
     <button class="tab" role="tab" data-tab="commodities" type="button">Commodities</button>
+    <button class="tab" role="tab" data-tab="kalshi" type="button">Kalshi</button>
+    <button class="tab" role="tab" data-tab="odds" type="button">Sportsbook</button>
     <button class="tab" role="tab" data-tab="sectors" type="button">Sectors</button>
     <button class="tab" role="tab" data-tab="top10" type="button">Top 10s</button>
     <button class="tab" role="tab" data-tab="geo" type="button">Geopolitics</button>
@@ -104,6 +106,25 @@
     <p class="snapnote">Updated each weekday after the close. Change is from the previous reading. Oil and gas spot prices can lag a few days.</p>
   </section>
 
+  <section class="page" data-page="kalshi" role="tabpanel" aria-label="Kalshi prediction markets" hidden>
+    <p class="snapnote"><span id="ks-src"></span>Kalshi is a CFTC-regulated exchange where contracts on real-world events trade between 1¢ and 99¢. The price is roughly the crowd's odds: 61¢ means about a 61% chance. Showing the most-traded markets of the last 24 hours.</p>
+    <div class="kpis" id="ks-kpis"></div>
+    <div class="card px"><div class="card-h"><h2>Biggest moves</h2><p class="note">Change in the YES price since the previous trading day, in points (1 point = 1¢ = 1%).</p></div><div class="chart" id="ks-movers" aria-label="Biggest Kalshi price moves"></div></div>
+    <div class="card px"><div class="card-h"><h2>Most traded markets</h2></div>
+      <div class="controls"><select id="ks-cat" aria-label="Category"><option value="">All categories</option></select><input id="ks-search" type="search" placeholder="Search markets" aria-label="Search markets" maxlength="40"></div>
+      <div class="scroll"><table id="ks-table" class="wraptable"><thead><tr><th>Market</th><th class="hide-narrow">Category</th><th class="num">Chance</th><th class="num hide-narrow">Bid / Ask</th><th class="num">Move</th><th class="num">24h vol.</th><th class="hide-narrow">Closes</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="odds" role="tabpanel" aria-label="Sportsbook odds" hidden>
+    <p class="snapnote"><span id="od-src"></span>Point spreads, totals (over/under) and moneylines as posted by the sportsbook ESPN shows for each game. Lines move often; check your sportsbook before you bet. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
+    <div class="kpis" id="od-kpis"></div>
+    <div class="card px"><div class="card-h"><h2>Lines</h2><p class="note">Spread: the favorite gives the points shown. Moneyline: +150 wins $150 on $100; −150 risks $150 to win $100.</p></div>
+      <div class="controls"><select id="od-league" aria-label="League"><option value="">All leagues</option></select><input id="od-search" type="search" placeholder="Search team" aria-label="Search teams" maxlength="40"></div>
+      <div class="scroll"><table id="od-table"><thead><tr><th>Game</th><th>When / score</th><th class="num">Spread</th><th class="num">Total</th><th class="num hide-narrow">Moneyline</th><th class="hide-narrow">Book</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
   <section class="page" data-page="sectors" role="tabpanel" aria-label="Sectors" hidden>
     <p class="snapnote"><span data-asof="sectors"></span>Source: StockAnalysis.com sector pages.</p>
     <div class="grid">
@@ -158,8 +179,8 @@
   </section>
 
   <footer>
-    <b>MARKET WATCH</b> · Demo for discussion only. Not financial advice; past performance does not predict future results.
-    Data: Alpha Vantage (stocks, commodities), CoinGecko (live crypto), StockAnalysis.com, GovGreed, Kapitol.ai, OGE and news reports as cited.
+    <b>MARKET WATCH</b> · For information only. Not financial or betting advice; past performance does not predict future results.
+    Data: Alpha Vantage (stocks, commodities), CoinGecko (live crypto), Kalshi (prediction markets), ESPN (sportsbook lines), StockAnalysis.com, GovGreed, Kapitol.ai, OGE and news reports as cited.
     Pixel fonts: Press Start 2P and VT323 (SIL Open Font License).
   </footer>
 </main>

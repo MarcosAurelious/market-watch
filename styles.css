@@ -180,3 +180,8 @@ footer { font-size: 19px; color: #7ee89c; }
 .dot.live { animation: none; }
 
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Kalshi + Sportsbook */
+td.big-num { font-size: 24px; color: var(--g); }
+td.live-tag { color: var(--amber, #ffc83d); }
+td .tk a { color: inherit; text-decoration: underline dotted; }

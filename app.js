@@ -1,7 +1,7 @@
 /* Market Watch — front end.
  * Security model:
  *  - No API keys live here. The page only reads a public JSON feed (built by the GitHub Action, which holds the key as an encrypted secret)
- *    and CoinGecko's public, keyless price endpoint.
+ *    and three public, keyless endpoints: CoinGecko (crypto), Kalshi (prediction-market prices) and ESPN (sportsbook lines).
  *  - Every value from the network is validated against a whitelist schema before use (type, range, length, https-only links).
  *  - Nothing is ever inserted as HTML: all text goes through textContent / createTextNode, so data can't inject script.
  *  - No eval, no inline handlers, no third-party scripts; the CSP in index.html enforces this.
@@ -12,6 +12,8 @@
   const CFG = Object.freeze(Object.assign({
     dataUrl: 'data/market.json',
     cryptoUrl: 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,tether,binancecoin,ripple,usd-coin,solana,tron,zcash,hyperliquid,dogecoin,monero,chainlink,leo-token,cardano&price_change_percentage=24h,7d',
+    kalshiUrl: 'https://api.elections.kalshi.com/trade-api/v2/markets',
+    espnUrl: 'https://site.api.espn.com/apis/site/v2/sports/',
     timeoutMs: 10000,
     maxBytes: 2_000_000,
   }, (window.MW_CONFIG && typeof window.MW_CONFIG === 'object') ? window.MW_CONFIG : {}));
@@ -24,6 +26,26 @@
   const U = (v) => { try { const u = new URL(String(v)); return u.protocol === 'https:' ? u.href : null; } catch { return null; } };
   const A = (v, max = 500) => (Array.isArray(v) ? v.slice(0, max).filter(isObj) : []);
   const TICK = (v) => S(v, 24).replace(/[^A-Za-z0-9.\-, ]/g, '');
+  const KT = (v) => (typeof v === 'string' && /^[A-Za-z0-9._-]{1,80}$/.test(v) ? v : '');
+  const P = (v) => N(v, 0, 1);
+  const HOST = (v, host) => { const u = U(v); return u && new URL(u).hostname === host ? u : null; };
+  const LEAGUES = [ // code, label, ESPN feed path, ESPN web path
+    ['nfl', 'NFL', 'football/nfl', 'nfl'], ['cfb', 'College football', 'football/college-football', 'college-football'],
+    ['nba', 'NBA', 'basketball/nba', 'nba'], ['cbb', 'College basketball', 'basketball/mens-college-basketball', 'mens-college-basketball'],
+    ['nhl', 'NHL', 'hockey/nhl', 'nhl'], ['mlb', 'MLB', 'baseball/mlb', 'mlb'], ['epl', 'Premier League', 'soccer/eng.1', 'soccer']];
+  const LEAGUE = new Map(LEAGUES.map((l) => [l[0], l]));
+  const ML = (v) => { const n = N(typeof v === 'string' ? v.replace('+', '') : v, -100000, 100000); return n != null && Math.abs(n) >= 100 ? Math.round(n) : null; };
+  function kalshiRow(r) {
+    return { ticker: KT(r.ticker), series: KT(r.series), category: S(r.category, 40) || 'Other', event: S(r.event, 200), outcome: S(r.outcome, 120),
+      yes_bid: P(r.yes_bid), yes_ask: P(r.yes_ask), last: P(r.last), prev: P(r.prev), vol_24h: N(r.vol_24h, 0, 1e13), volume: N(r.volume, 0, 1e13), oi: N(r.oi, 0, 1e13),
+      close_time: D(r.close_time), url: HOST(r.url, 'kalshi.com') };
+  }
+  function oddsRow(g) {
+    return { league: LEAGUE.has(g.league) ? g.league : '', league_name: S(g.league_name, 30), id: KT(g.id), date: D(g.date), state: S(g.state, 8), status: S(g.status, 60),
+      home: S(g.home, 60), home_abbr: S(g.home_abbr, 8), away: S(g.away, 60), away_abbr: S(g.away_abbr, 8), home_score: N(g.home_score, 0, 1000), away_score: N(g.away_score, 0, 1000),
+      provider: S(g.provider, 40), details: S(g.details, 40), spread: N(g.spread, -200, 200), total: N(g.total, 0, 1000), home_ml: ML(g.home_ml), away_ml: ML(g.away_ml),
+      url: HOST(g.url, 'www.espn.com') };
+  }
 
   function validate(raw) {
     if (!isObj(raw)) throw new Error('feed is not an object');
@@ -56,6 +78,8 @@
       trump_people: A(raw.trump_people, 20).map((r) => ({ person: S(r.person, 60), role: S(r.role, 120), disclosed: S(r.disclosed, 900), status: S(r.status, 600) })).filter((r) => r.person),
       trump_trades: A(raw.trump_trades, 2000).map((r) => ({ id: N(r.id, 0, 1e7), person: S(r.person, 60), group: S(r.group, 120), date: S(r.date, 40), asset: S(r.asset, 200), ticker: S(r.ticker, 80),
         action: S(r.action, 20), amount: S(r.amount, 80), source: S(r.source, 120), source_url: U(r.source_url), as_of: D(r.as_of) })).filter((r) => r.person),
+      kalshi: { as_of: D(isObj(raw.kalshi) ? raw.kalshi.as_of : '') , rows: A(isObj(raw.kalshi) ? raw.kalshi.rows : [], 200).map(kalshiRow).filter((r) => r.ticker && r.event) },
+      odds: { as_of: D(isObj(raw.odds) ? raw.odds.as_of : ''), games: A(isObj(raw.odds) ? raw.odds.games : [], 400).map(oddsRow).filter((g) => g.league && g.id && g.home && g.away) },
     };
     if (!out.stocks.length) throw new Error('feed has no stock rows');
     return out;
@@ -95,6 +119,55 @@
     });
     if (!n) throw new Error('no coins matched');
     return merged;
+  }
+
+  /* Kalshi: refresh only the markets the feed picked (one small request). Prices arrive as '<x>_dollars' strings or cents. */
+  const kp = (m, k) => { const d = P(m[k + '_dollars']); if (d != null) return d; const c = N(m[k], 0, 100); return c == null ? null : c > 1 ? c / 100 : c; };
+  const kq = (m, k) => { const f = N(m[k + '_fp'], 0, 1e13); return f != null ? f : N(m[k], 0, 1e13); };
+  async function liveKalshi(rows) {
+    if (!rows.length) throw new Error('no markets to refresh');
+    const raw = await getJSON(CFG.kalshiUrl + '?tickers=' + rows.slice(0, 100).map((r) => encodeURIComponent(r.ticker)).join(','));
+    const list = isObj(raw) ? A(raw.markets, 200) : [];
+    const by = new Map(list.map((m) => [KT(m.ticker), m]));
+    let n = 0;
+    const merged = rows.map((r) => {
+      const m = by.get(r.ticker); if (!m) return r;
+      const last = kp(m, 'last_price'); if (last == null && kp(m, 'yes_bid') == null) return r;
+      n += 1;
+      return Object.assign({}, r, { yes_bid: kp(m, 'yes_bid') ?? r.yes_bid, yes_ask: kp(m, 'yes_ask') ?? r.yes_ask, last: last ?? r.last,
+        prev: kp(m, 'previous_price') ?? r.prev, vol_24h: kq(m, 'volume_24h') ?? r.vol_24h, volume: kq(m, 'volume') ?? r.volume });
+    });
+    if (!n) throw new Error('no Kalshi markets matched');
+    return merged;
+  }
+  /* ESPN scoreboards: each league is fetched on its own; a league that fails keeps its saved lines. */
+  const dig = (o, ...p) => p.reduce((x, k) => (isObj(x) ? x[k] : undefined), o);
+  function espnGame(ev, lg) {
+    const comp = A(ev.competitions, 3)[0]; if (!comp) return null;
+    const side = (h) => A(comp.competitors, 4).find((c) => c.homeAway === h);
+    const h = side('home'), a = side('away'), o = A(comp.odds, 5)[0];
+    if (!h || !a || !o) return null;
+    const tot = N(o.overUnder, 0, 1000) ?? N(String(dig(o, 'total', 'over', 'close', 'line') || '').replace(/^[ou]/, ''), 0, 1000);
+    const g = oddsRow({ league: lg[0], league_name: lg[1], id: S(ev.id, 20), date: ev.date, state: dig(ev, 'status', 'type', 'state'), status: dig(ev, 'status', 'type', 'shortDetail'),
+      home: dig(h, 'team', 'displayName'), home_abbr: dig(h, 'team', 'abbreviation'), away: dig(a, 'team', 'displayName'), away_abbr: dig(a, 'team', 'abbreviation'),
+      home_score: h.score, away_score: a.score, provider: dig(o, 'provider', 'name'), details: o.details, spread: o.spread, total: tot,
+      home_ml: ML(dig(o, 'homeTeamOdds', 'moneyLine')) ?? ML(dig(o, 'moneyline', 'home', 'close', 'odds')) ?? ML(dig(o, 'moneyline', 'home', 'open', 'odds')),
+      away_ml: ML(dig(o, 'awayTeamOdds', 'moneyLine')) ?? ML(dig(o, 'moneyline', 'away', 'close', 'odds')) ?? ML(dig(o, 'moneyline', 'away', 'open', 'odds')),
+      url: 'https://www.espn.com/' + lg[3] + '/' + (lg[3] === 'soccer' ? 'match' : 'game') + '/_/gameId/' + encodeURIComponent(S(ev.id, 20)) });
+    if (!g.id || !g.home || !g.away) return null;
+    if (!g.details && g.spread == null && g.total == null && g.home_ml == null) return null;
+    return g;
+  }
+  async function liveOdds(saved) {
+    const results = await Promise.allSettled(LEAGUES.map(async (lg) => {
+      const raw = await getJSON(CFG.espnUrl + lg[2] + '/scoreboard');
+      if (!isObj(raw) || !Array.isArray(raw.events)) throw new Error('no events');
+      return A(raw.events, 200).map((e) => espnGame(e, lg)).filter(Boolean).slice(0, 40);
+    }));
+    let ok = 0; const games = [];
+    results.forEach((r, i) => { if (r.status === 'fulfilled') { ok += 1; games.push(...r.value); } else games.push(...saved.filter((g) => g.league === LEAGUES[i][0])); });
+    if (!ok) throw new Error('no league reachable');
+    return games;
   }
 
   /* ======================= tiny DOM + SVG kit ======================= */
@@ -214,7 +287,7 @@
 
   /* ======================= state ======================= */
   let DATA = null, RET = [], current = 'overview';
-  const SOURCE = { feed: 'snapshot', crypto: 'snapshot' };
+  const SOURCE = { feed: 'snapshot', crypto: 'snapshot', kalshi: 'snapshot', odds: 'snapshot' };
 
   /* ======================= renderers ======================= */
   function renderHeader() {
@@ -464,6 +537,66 @@
     });
   }
 
+  const cents = (v) => (v == null ? '' : Math.round(v * 100) + '¢');
+  const chance = (r) => r.last ?? (r.yes_bid != null && r.yes_ask != null ? (r.yes_bid + r.yes_ask) / 2 : r.yes_bid);
+  const amer = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v);
+  const qty = (v) => (v == null ? '' : Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v));
+  const when = (s) => { if (!s) return ''; const d = new Date(s); return isNaN(d) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const link = (text, href) => { if (!href) return document.createTextNode(text); const a = el('a', '', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; };
+  const fillSelect = (sel, values, all) => { if (sel.options.length !== values.length + 1) { const k = sel.value; sel.replaceChildren(new Option(all, ''), ...values.map((v) => new Option(v[1], v[0]))); sel.value = k; } };
+
+  function renderKalshi() {
+    const rows = DATA.kalshi.rows.slice().sort((a, b) => (b.vol_24h ?? 0) - (a.vol_24h ?? 0));
+    const k = $('#ks-kpis'); k.replaceChildren();
+    rows.slice(0, 4).forEach((r) => { const c = chance(r), mv = r.last != null && r.prev != null ? r.last - r.prev : null;
+      const card = kpiCard(r.event.length > 60 ? r.event.slice(0, 57) + '...' : r.event, (c == null ? '--' : Math.round(c * 100) + '%') + (r.outcome ? ' ' + r.outcome.slice(0, 24) : ''),
+        subLine(mv == null ? '' : pill((mv >= 0 ? '+' : '') + Math.round(mv * 100) + ' pts', mv), ' ' + qty(r.vol_24h) + ' traded 24h'), sprite('chart', 3));
+      k.append(card); });
+    const movers = rows.filter((r) => r.last != null && r.prev != null && r.last !== r.prev).sort((a, b) => Math.abs(b.last - b.prev) - Math.abs(a.last - a.prev)).slice(0, 12);
+    blockBars($('#ks-movers'), movers.sort((a, b) => (b.last - b.prev) - (a.last - a.prev)), { label: (d) => (d.outcome || d.event).slice(0, 22), value: (d) => d.last - d.prev,
+      fmt: (v) => (v >= 0 ? '+' : '') + Math.round(v * 100) + ' pts', rowH: 24, tips: (d) => [d.event, (d.outcome ? d.outcome + ': ' : '') + cents(d.prev) + ' → ' + cents(d.last)] });
+    const sel = $('#ks-cat'), q = $('#ks-search').value.trim().toLowerCase();
+    fillSelect(sel, [...new Set(rows.map((r) => r.category))].sort().map((c) => [c, c]), 'All categories');
+    const body = $('#ks-table tbody'); body.replaceChildren();
+    rows.filter((r) => (!sel.value || r.category === sel.value) && (!q || (r.event + ' ' + r.outcome).toLowerCase().includes(q))).forEach((r) => {
+      const tr = body.insertRow(); const c = chance(r), mv = r.last != null && r.prev != null ? r.last - r.prev : null;
+      const m = document.createDocumentFragment(); const t = el('span', 'tk'); t.append(link(r.outcome || 'Yes', r.url)); m.append(t, el('span', 'co', r.event));
+      cell(tr, m); cell(tr, r.category, 'hide-narrow');
+      cell(tr, c == null ? '' : Math.round(c * 100) + '%', 'num big-num');
+      cell(tr, r.yes_bid == null && r.yes_ask == null ? '' : cents(r.yes_bid) + ' / ' + cents(r.yes_ask), 'num hide-narrow');
+      cell(tr, mv == null ? '' : pill((mv >= 0 ? '+' : '') + Math.round(mv * 100), mv), 'num');
+      cell(tr, qty(r.vol_24h), 'num'); cell(tr, dShort(r.close_time), 'hide-narrow');
+    });
+    $('#ks-src').textContent = SOURCE.kalshi === 'live' ? 'LIVE prices from Kalshi, refreshed when you opened this page. ' : (rows.length ? 'Saved Kalshi prices from ' + when(DATA.kalshi.as_of) + '. ' : 'Kalshi markets appear after the next data update. ');
+  }
+
+  function renderOdds() {
+    const games = DATA.odds.games;
+    const sel = $('#od-league'), q = $('#od-search').value.trim().toLowerCase();
+    fillSelect(sel, LEAGUES.filter((l) => games.some((g) => g.league === l[0])).map((l) => [l[0], l[1]]), 'All leagues');
+    const k = $('#od-kpis'); k.replaceChildren();
+    LEAGUES.forEach((l) => { const n = games.filter((g) => g.league === l[0]).length; if (n) k.append(kpiCard(l[1], String(n), subLine(n === 1 ? 'game with a line' : 'games with lines'), sprite('chart', 3))); });
+    const body = $('#od-table tbody'); body.replaceChildren();
+    let last = null;
+    const order = new Map(LEAGUES.map((l, i) => [l[0], i]));
+    games.filter((g) => (!sel.value || g.league === sel.value) && (!q || (g.home + ' ' + g.away + ' ' + g.home_abbr + ' ' + g.away_abbr).toLowerCase().includes(q)))
+      .sort((a, b) => order.get(a.league) - order.get(b.league) || String(a.date).localeCompare(String(b.date))).forEach((g) => {
+        if (g.league !== last) { last = g.league; const r = body.insertRow(); r.className = 'grp'; const td = r.insertCell(); td.colSpan = 6; td.textContent = LEAGUE.get(g.league)[1]; }
+        const tr = body.insertRow();
+        const live = g.state === 'in' || g.state === 'post';
+        const m = document.createDocumentFragment(); const t = el('span', 'tk'); t.append(link(g.away_abbr + ' @ ' + g.home_abbr, g.url)); m.append(t, el('span', 'co', g.away + ' at ' + g.home));
+        cell(tr, m);
+        const st = cell(tr, live && g.away_score != null ? g.away_abbr + ' ' + g.away_score + ' – ' + g.home_abbr + ' ' + g.home_score + ' · ' + g.status : (g.state === 'pre' ? when(g.date) : g.status));
+        if (g.state === 'in') st.classList.add('live-tag');
+        cell(tr, g.details || (g.spread == null ? '—' : g.home_abbr + ' ' + (g.spread > 0 ? '+' : '') + g.spread), 'num');
+        cell(tr, g.total == null ? '—' : 'O/U ' + g.total, 'num');
+        cell(tr, g.away_abbr + ' ' + amer(g.away_ml) + ' · ' + g.home_abbr + ' ' + amer(g.home_ml), 'num hide-narrow');
+        cell(tr, g.provider, 'hide-narrow');
+      });
+    if (!games.length) { const r = body.insertRow(); const td = r.insertCell(); td.colSpan = 6; td.textContent = 'No lines posted right now. Lines appear as sportsbooks open them.'; }
+    $('#od-src').textContent = SOURCE.odds === 'live' ? 'LIVE lines from ESPN, refreshed when you opened this page. ' : (games.length ? 'Saved lines from ' + when(DATA.odds.as_of) + '. ' : '');
+  }
+
   function asOfLabels() {
     const latest = (rows) => rows.map((r) => r.as_of).filter(Boolean).sort().pop();
     const map = { sectors: DATA.sectors, top10: DATA.top10, penny: DATA.penny, geopolitics: DATA.geopolitics, congress: DATA.congress, trump: DATA.trump_trades };
@@ -471,7 +604,7 @@
   }
 
   const RENDER = { overview: renderOverview, portfolio: renderPortfolio, stocks: renderStocks, crypto: renderCrypto, commodities: renderCommodities, sectors: renderSectors,
-    top10: renderTop10, geo: renderGeo, penny: renderPenny, congress: renderCongress, trump: renderTrump };
+    top10: renderTop10, geo: renderGeo, penny: renderPenny, congress: renderCongress, trump: renderTrump, kalshi: renderKalshi, odds: renderOdds };
 
   function render() {
     if (!DATA) return;
@@ -497,7 +630,8 @@
     renderStocks();
   }));
   [['#st-search', 'input', renderStocks], ['#st-sector', 'change', renderStocks], ['#t10-search', 'input', renderTop10], ['#t10-sector', 'change', renderTop10],
-   ['#tt-person', 'change', renderTrump], ['#tt-action', 'change', renderTrump], ['#tt-search', 'input', renderTrump]].forEach(([s, ev, fn]) => { const e = $(s); if (e) e.addEventListener(ev, fn); });
+   ['#tt-person', 'change', renderTrump], ['#tt-action', 'change', renderTrump], ['#tt-search', 'input', renderTrump],
+   ['#ks-cat', 'change', renderKalshi], ['#ks-search', 'input', renderKalshi], ['#od-league', 'change', renderOdds], ['#od-search', 'input', renderOdds]].forEach(([s, ev, fn]) => { const e = $(s); if (e) e.addEventListener(ev, fn); });
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(render, 200); });
 
   /* ======================= boot ======================= */
@@ -521,8 +655,13 @@
     show(location.hash.slice(1) || 'overview', false);
     const when = DATA.generated_at ? new Date(DATA.generated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'unknown';
     setStatus(SOURCE.feed === 'live' ? 'live' : 'snap', (SOURCE.feed === 'live' ? 'ONLINE · market feed updated ' : 'OFFLINE SNAPSHOT · saved ') + when);
-    try { DATA.crypto.rows = await liveCrypto(DATA.crypto.rows); SOURCE.crypto = 'live'; DATA.crypto.as_of = new Date().toISOString(); render(); }
-    catch (e) { console.warn('live crypto unavailable:', e.message); SOURCE.crypto = 'snapshot'; render(); }
+    SOURCE.crypto = SOURCE.kalshi = SOURCE.odds = 'snapshot';
+    await Promise.allSettled([
+      liveCrypto(DATA.crypto.rows).then((rows) => { DATA.crypto.rows = rows; SOURCE.crypto = 'live'; DATA.crypto.as_of = new Date().toISOString(); }),
+      liveKalshi(DATA.kalshi.rows).then((rows) => { DATA.kalshi.rows = rows; SOURCE.kalshi = 'live'; }),
+      liveOdds(DATA.odds.games).then((games) => { DATA.odds.games = games; SOURCE.odds = 'live'; DATA.odds.as_of = new Date().toISOString(); }),
+    ].map((p) => p.catch((e) => console.warn('live source unavailable:', e.message))));
+    render();
   }
   /* limiter: one load at a time, and at most one manual reload every 30 seconds */
   let busy = false, lastLoad = 0;

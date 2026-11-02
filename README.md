@@ -1,7 +1,7 @@
 # Market Watch
 
-A retro, 8-bit style market dashboard: stocks, crypto, commodities, sectors, penny stocks, Congress trading and disclosed political trades.
-**Demo for discussion only. Not financial advice.**
+A retro, 8-bit style market dashboard: stocks, crypto, commodities, Kalshi prediction markets, sportsbook odds and point spreads, sectors, penny stocks, Congress trading and disclosed political trades.
+**For information only. Not financial or betting advice.**
 
 ## How it works
 
@@ -9,8 +9,8 @@ A retro, 8-bit style market dashboard: stocks, crypto, commodities, sectors, pen
 GitHub Actions (back end, runs on GitHub's servers)
   └─ scripts/update_data.py  ── uses your Alpha Vantage key (encrypted secret) ──► writes data/market.json
 GitHub Pages (front end, public website)
-  └─ index.html + app.js + styles.css  ── reads data/market.json + CoinGecko live crypto (no key)
-market-watch-demo.html  (one file to share)  ── same app; loads the live feed on open, falls back to a built-in snapshot
+  └─ index.html + app.js + styles.css  ── reads data/market.json + live CoinGecko crypto, Kalshi prices and ESPN lines (no keys)
+market-watch.html  (one file to share)  ── same app; loads the live feed on open, falls back to a built-in snapshot
 ```
 
 Your API key never reaches the website or the shared file.
@@ -35,9 +35,9 @@ Your API key never reaches the website or the shared file.
    *Different repo name?* Run `python3 scripts/build_standalone.py https://<you>.github.io/<repo>/data/market.json`
    to rebuild the shareable file.
 
-## Sharing with investors
+## Sharing
 
-- Send the **website link**, or the single file **`market-watch-demo.html`** (email/AirDrop/Drive).
+- Send the **website link**, or the single file **`market-watch.html`** (email/AirDrop/Drive).
 - Opening either one pulls the newest data from your feed and live crypto prices every time.
 - If someone opens the file offline, it shows the built-in snapshot and says "OFFLINE SNAPSHOT".
 
@@ -46,6 +46,8 @@ Your API key never reaches the website or the shared file.
 | Section | Source | When |
 |---|---|---|
 | Crypto | CoinGecko (no key) | Every time the page opens |
+| Kalshi prediction markets | Kalshi public API (no key). The back end picks the 60 most-traded markets; the page refreshes their prices | Back end every 4 hours; prices every time the page opens |
+| Sportsbook odds, spreads, totals, moneylines | ESPN public scoreboards (no key): NFL, college football, NBA, college basketball, NHL, MLB, Premier League | Every time the page opens (saved copy every 4 hours as a fallback) |
 | Stocks, commodities, $100 portfolio | Alpha Vantage via the back end | Weekdays after the close (25 free calls/day, so each stock refreshes at least every other day) |
 | Sectors, Top 10s, Penny, Geopolitics, Congress, Trump & co. | Researched snapshots in `data/market.json` | When you replace `data/market.json` with a newer one |
 
@@ -54,6 +56,6 @@ Your API key never reaches the website or the shared file.
 - `index.html`, `app.js`, `styles.css`, `fonts/` — the front end (no third-party code; fonts are bundled, SIL OFL).
 - `data/market.json` — the data feed.
 - `scripts/update_data.py` — the back end updater (Python standard library only).
-- `scripts/build_standalone.py` — rebuilds `market-watch-demo.html`.
+- `scripts/build_standalone.py` — rebuilds `market-watch.html`.
 - `.github/workflows/update-data.yml` — the schedule.
 - `SECURITY.md` — the security design.

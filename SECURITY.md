@@ -6,7 +6,7 @@
 - It is used only by `scripts/update_data.py` on GitHub's servers, read from an environment variable.
   It is never written to disk, never placed in `data/market.json` (the script refuses to save if it finds the key in the output),
   and is scrubbed from any log line.
-- The website and the shared file contain **no keys of any kind**. Crypto prices come from CoinGecko's public, keyless endpoint.
+- The website and the shared file contain **no keys of any kind**. Crypto prices (CoinGecko), prediction-market prices (Kalshi) and sportsbook lines (ESPN) come from public, keyless endpoints, and every value is validated before display; links must point to kalshi.com or www.espn.com.
 - To rotate: create a new key at alphavantage.co, update the secret, and delete the old key.
 
 ## Encryption in transit
@@ -15,7 +15,7 @@
 
 ## Protection against malicious code and data (XSS / injection)
 - **Content-Security-Policy** on every page: no third-party scripts, styles or fonts; no inline code except the exact
-  hashed blocks in the shared file; network access limited to the data feed and CoinGecko; no forms, frames, plugins or `<base>` changes;
+  hashed blocks in the shared file; network access limited to the data feed, CoinGecko, Kalshi and ESPN (all public, keyless, HTTPS); no forms, frames, plugins or `<base>` changes;
   **Trusted Types** required, which blocks HTML-string injection sinks.
 - The app never inserts data as HTML. All text goes through `textContent`, so a malicious value in the feed is shown as text, not run.
 - Every field from the network is validated against a whitelist schema (type, numeric range, max length); links must be `https://`
@@ -36,4 +36,4 @@
   so nothing sensitive should ever be added there.
 - GitHub Pages can't set HTTP security headers; the policy is applied with a `<meta>` CSP, which covers scripts, styles and connections
   but not clickjacking (`frame-ancestors`). If you need that, put the site behind Cloudflare (free) and add the header there.
-- This is a demo, not a trading system: no user accounts, no payments, no personal data are collected.
+- This is an information app, not a trading or betting system: no user accounts, no payments, no personal data are collected.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build market-watch-demo.html: one self-contained file to email or AirDrop to investors.
+"""Build market-watch.html: the whole app in one self-contained file to email, AirDrop or share.
 
 It inlines the CSS, JS and pixel fonts, embeds the current data/market.json as an offline fallback, and points the app at
 the live feed on GitHub Pages. A strict Content-Security-Policy with SHA-256 hashes allows only these exact inline
-scripts/styles to run and only two network destinations (your feed and CoinGecko).
+scripts/styles to run and only these network destinations: your feed, CoinGecko, Kalshi and ESPN.
 
 Usage:  python3 scripts/build_standalone.py https://<user>.github.io/<repo>/data/market.json
 """
@@ -38,7 +38,7 @@ cfg = "window.MW_CONFIG=" + json.dumps({"dataUrl": FEED}) + ";"
 snapshot = json.dumps(json.loads(read("data/market.json")), separators=(",", ":")).replace("</", "<\\/")
 
 html = read("index.html")
-csp = ("default-src 'none'; script-src %s %s; style-src %s; font-src data:; img-src data:; connect-src %s https://api.coingecko.com; "
+csp = ("default-src 'none'; script-src %s %s; style-src %s; font-src data:; img-src data:; connect-src %s https://api.coingecko.com https://api.elections.kalshi.com https://site.api.espn.com; "
        "base-uri 'none'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'"
        % (sha(cfg), sha(js), sha(css), FEED_ORIGIN))
 start = html.index('<meta http-equiv="Content-Security-Policy"')
@@ -50,7 +50,7 @@ html = html.replace('<link rel="preload" href="fonts/vt323.woff2" as="font" type
 html = html.replace("<!--MW-SNAPSHOT-->", '<script type="application/json" id="mw-snapshot">' + snapshot + "</script>")
 html = html.replace("<!--MW-CONFIG-->", "<script>" + cfg + "</script>")
 html = html.replace('<script src="app.js"></script>', "<script>" + js + "</script>")
-out = os.path.join(ROOT, "market-watch-demo.html")
+out = os.path.join(ROOT, "market-watch.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(html)
 print("wrote", out, len(html), "bytes; feed:", FEED)

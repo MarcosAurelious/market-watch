@@ -172,7 +172,7 @@ def refresh_crypto(crypto):
 KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_PAGES = int(os.environ.get("MW_KALSHI_PAGES", "200"))
 KALSHI_SECONDS = 420  # time budget for the full walk
-KALSHI_KEEP = 60
+KALSHI_KEEP = 50
 KALSHI_PER_EVENT = 3
 
 
@@ -242,8 +242,14 @@ def refresh_kalshi(data):
     if not rows:
         raise ValueError("no active Kalshi markets with volume")
     rows.sort(key=lambda r: -(r["vol_24h"] or 0))
+    keep = rows[:KALSHI_KEEP]  # the most traded overall, plus the top few in every category so no topic disappears
+    seen = {r["ticker"] for r in keep}
+    for cat in sorted({r["category"] for r in rows}):
+        for r in [r for r in rows if r["category"] == cat and r["ticker"] not in seen][:4]:
+            keep.append(r); seen.add(r["ticker"])
+    rows = sorted(keep[:150], key=lambda r: -(r["vol_24h"] or 0))
     data["kalshi"] = {"as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": "Kalshi public API",
-                      "pages": pages, "complete": not cursor, "rows": rows[:KALSHI_KEEP]}
+                      "pages": pages, "complete": not cursor, "rows": rows}
     log("kalshi: %d pages, complete=%s" % (pages, not cursor))
     return len(data["kalshi"]["rows"])
 

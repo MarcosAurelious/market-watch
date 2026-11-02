@@ -537,6 +537,7 @@
     });
   }
 
+  const movePill = (mv, suffix) => { const n = Math.round(mv * 100); return pill((n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n) + suffix, n); };
   const cents = (v) => (v == null ? '' : Math.round(v * 100) + '¢');
   const chance = (r) => r.last ?? (r.yes_bid != null && r.yes_ask != null ? (r.yes_bid + r.yes_ask) / 2 : r.yes_bid);
   const amer = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v);
@@ -550,9 +551,9 @@
     const k = $('#ks-kpis'); k.replaceChildren();
     rows.slice(0, 4).forEach((r) => { const c = chance(r), mv = r.last != null && r.prev != null ? r.last - r.prev : null;
       const card = kpiCard(r.event.length > 60 ? r.event.slice(0, 57) + '...' : r.event, (c == null ? '--' : Math.round(c * 100) + '%') + (r.outcome ? ' ' + r.outcome.slice(0, 24) : ''),
-        subLine(mv == null ? '' : pill((mv >= 0 ? '+' : '') + Math.round(mv * 100) + ' pts', mv), ' ' + qty(r.vol_24h) + ' traded 24h'), sprite('chart', 3));
+        subLine(mv == null ? '' : movePill(mv, ' pts'), ' ' + qty(r.vol_24h) + ' traded 24h'), sprite('chart', 3));
       k.append(card); });
-    const movers = rows.filter((r) => r.last != null && r.prev != null && r.last !== r.prev).sort((a, b) => Math.abs(b.last - b.prev) - Math.abs(a.last - a.prev)).slice(0, 12);
+    const movers = rows.filter((r) => r.last != null && r.prev != null && Math.round(Math.abs(r.last - r.prev) * 100) >= 1).sort((a, b) => Math.abs(b.last - b.prev) - Math.abs(a.last - a.prev)).slice(0, 12);
     blockBars($('#ks-movers'), movers.sort((a, b) => (b.last - b.prev) - (a.last - a.prev)), { label: (d) => (d.outcome || d.event).slice(0, 22), value: (d) => d.last - d.prev,
       fmt: (v) => (v >= 0 ? '+' : '') + Math.round(v * 100) + ' pts', rowH: 24, tips: (d) => [d.event, (d.outcome ? d.outcome + ': ' : '') + cents(d.prev) + ' → ' + cents(d.last)] });
     const sel = $('#ks-cat'), q = $('#ks-search').value.trim().toLowerCase();
@@ -562,10 +563,12 @@
       const tr = body.insertRow(); const c = chance(r), mv = r.last != null && r.prev != null ? r.last - r.prev : null;
       const m = document.createDocumentFragment(); const t = el('span', 'tk'); t.append(link(r.outcome || 'Yes', r.url)); m.append(t, el('span', 'co', r.event));
       cell(tr, m); cell(tr, r.category, 'hide-narrow');
-      cell(tr, c == null ? '' : Math.round(c * 100) + '%', 'num big-num');
+      const ch = document.createDocumentFragment(); ch.append(c == null ? '' : Math.round(c * 100) + '%');
+      if (mv != null) { const w = el('span', 'narrow-only'); w.append(movePill(mv, '')); ch.append(w); }
+      cell(tr, ch, 'num big-num');
       cell(tr, r.yes_bid == null && r.yes_ask == null ? '' : cents(r.yes_bid) + ' / ' + cents(r.yes_ask), 'num hide-narrow');
-      cell(tr, mv == null ? '' : pill((mv >= 0 ? '+' : '') + Math.round(mv * 100), mv), 'num');
-      cell(tr, qty(r.vol_24h), 'num'); cell(tr, dShort(r.close_time), 'hide-narrow');
+      cell(tr, mv == null ? '' : movePill(mv, ''), 'num hide-narrow');
+      cell(tr, qty(r.vol_24h), 'num hide-narrow'); cell(tr, dShort(r.close_time), 'hide-narrow');
     });
     $('#ks-src').textContent = SOURCE.kalshi === 'live' ? 'LIVE prices from Kalshi, refreshed when you opened this page. ' : (rows.length ? 'Saved Kalshi prices from ' + when(DATA.kalshi.as_of) + '. ' : 'Kalshi markets appear after the next data update. ');
   }
@@ -584,12 +587,15 @@
         if (g.league !== last) { last = g.league; const r = body.insertRow(); r.className = 'grp'; const td = r.insertCell(); td.colSpan = 6; td.textContent = LEAGUE.get(g.league)[1]; }
         const tr = body.insertRow();
         const live = g.state === 'in' || g.state === 'post';
-        const m = document.createDocumentFragment(); const t = el('span', 'tk'); t.append(link(g.away_abbr + ' @ ' + g.home_abbr, g.url)); m.append(t, el('span', 'co', g.away + ' at ' + g.home));
+        const stText = live && g.away_score != null ? g.away_abbr + ' ' + g.away_score + ' – ' + g.home_abbr + ' ' + g.home_score + ' · ' + g.status : (g.state === 'pre' ? when(g.date) : g.status);
+        const m = document.createDocumentFragment(); const t = el('span', 'tk'); t.append(link(g.away_abbr + ' @ ' + g.home_abbr, g.url));
+        const sub = el('span', 'co narrow-only' + (g.state === 'in' ? ' live-tag' : ''), stText);
+        m.append(t, el('span', 'co hide-narrow', g.away + ' at ' + g.home), sub);
         cell(tr, m);
-        const st = cell(tr, live && g.away_score != null ? g.away_abbr + ' ' + g.away_score + ' – ' + g.home_abbr + ' ' + g.home_score + ' · ' + g.status : (g.state === 'pre' ? when(g.date) : g.status));
+        const st = cell(tr, stText, 'hide-narrow');
         if (g.state === 'in') st.classList.add('live-tag');
         cell(tr, g.details || (g.spread == null ? '—' : g.home_abbr + ' ' + (g.spread > 0 ? '+' : '') + g.spread), 'num');
-        cell(tr, g.total == null ? '—' : 'O/U ' + g.total, 'num');
+        cell(tr, g.total == null ? '—' : String(g.total), 'num');
         cell(tr, g.away_abbr + ' ' + amer(g.away_ml) + ' · ' + g.home_abbr + ' ' + amer(g.home_ml), 'num hide-narrow');
         cell(tr, g.provider, 'hide-narrow');
       });

@@ -170,7 +170,8 @@ def refresh_crypto(crypto):
 # Kalshi prediction markets (public, keyless market data). The open-event list is large, so we page through it,
 # keep active markets, and save the most-traded ones (24h volume). The page then refreshes just those prices live.
 KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2"
-KALSHI_PAGES = int(os.environ.get("MW_KALSHI_PAGES", "40"))
+KALSHI_PAGES = int(os.environ.get("MW_KALSHI_PAGES", "200"))
+KALSHI_SECONDS = 420  # time budget for the full walk
 KALSHI_KEEP = 60
 KALSHI_PER_EVENT = 3
 
@@ -218,8 +219,8 @@ def kalshi_row(ev, m, multi):
 
 
 def refresh_kalshi(data):
-    rows, cursor, pages = [], "", 0
-    while pages < KALSHI_PAGES:
+    rows, cursor, pages, started = [], "", 0, time.time()
+    while pages < KALSHI_PAGES and time.time() - started < KALSHI_SECONDS:
         params = {"status": "open", "with_nested_markets": "true", "limit": "100"}
         if cursor:
             params["cursor"] = cursor
@@ -242,7 +243,8 @@ def refresh_kalshi(data):
         raise ValueError("no active Kalshi markets with volume")
     rows.sort(key=lambda r: -(r["vol_24h"] or 0))
     data["kalshi"] = {"as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "source": "Kalshi public API",
-                      "pages": pages, "rows": rows[:KALSHI_KEEP]}
+                      "pages": pages, "complete": not cursor, "rows": rows[:KALSHI_KEEP]}
+    log("kalshi: %d pages, complete=%s" % (pages, not cursor))
     return len(data["kalshi"]["rows"])
 
 
